@@ -18,6 +18,7 @@ from nmigen.vendor.lattice_ecp5 import LatticeECP5Platform
 from nmigen_boards.versa_ecp5_5g import VersaECP55GPlatform as _VersaECP55G
 
 from .core import LUNAPlatform
+from ..interface.serdes_phy import SerDesPHY, LunaECP5SerDes
 
 __all__ = ["ECP5Versa_5G_Platform"]
 
@@ -133,13 +134,61 @@ class VersaDomainGenerator(Elaboratable):
         return m
 
 
+class VersaSuperSpeedPHY(SerDesPHY):
+    """ Superspeed PHY configuration for the Versa-5G. """
+
+    SYNC_FREQUENCY = 125e6
+    FAST_FREQUENCY = 250e6
+
+    SERDES_CHANNEL = 0
+
+
+    def __init__(self, platform):
+
+        # Grab the I/O that implements our SerDes interface...
+        serdes_io      = platform.request("serdes", self.SERDES_CHANNEL, dir={'tx':"-", 'rx':"-"})
+
+        # Create our SerDes interface...
+        self.serdes = LunaECP5SerDes(platform,
+            sys_clk      = ClockSignal("sync"),
+            sys_clk_freq = self.SYNC_FREQUENCY,
+            refclk_pads  = ClockSignal("fast"),
+            refclk_freq  = self.FAST_FREQUENCY,
+            tx_pads      = serdes_io.tx,
+            rx_pads      = serdes_io.rx,
+            channel      = self.SERDES_CHANNEL
+        )
+
+        # ... and use it to create our core PHY interface.
+        super().__init__(
+            serdes             = self.serdes,
+            ss_clk_frequency   = self.SYNC_FREQUENCY,
+            fast_clk_frequency = self.FAST_FREQUENCY
+        )
+
+
+    def elaborate(self, platform):
+        m = super().elaborate(platform)
+
+        # Patch in our SerDes as a submodule.
+        m.submodules.serdes = self.serdes
+
+        return m
+
+
+
 class ECP5Versa_5G_Platform(_VersaECP55G, LUNAPlatform):
     name                   = "ECP5 Versa 5G"
 
     clock_domain_generator = VersaDomainGenerator
+    default_usb3_phy       = VersaSuperSpeedPHY
     default_usb_connection = None
 
     additional_resources = [
+        Resource("serdes", 0,
+            Subsignal("rx", DiffPairs("Y5", "Y6")),
+            Subsignal("tx", DiffPairs("W4", "W5")),
+        ),
         Resource("serdes", 1,
             Subsignal("rx", DiffPairs("Y5", "Y6")),
             Subsignal("tx", DiffPairs("W4", "W5"))

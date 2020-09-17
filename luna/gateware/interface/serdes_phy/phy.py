@@ -40,6 +40,7 @@ class SerDesPHY(Elaboratable):
 
         # Temporary?
         self.train_alignment       = Signal()
+        self.train_equalizer       = Signal()
         self.rx_polarity           = Signal()
 
         self.lfps_polling_detected = Signal()
@@ -79,14 +80,15 @@ class SerDesPHY(Elaboratable):
 
         # TODO: replace these with PIPE signals
         m.d.comb += [
-            self.ready               .eq(self._serdes.ready),
+            self.ready                    .eq(self._serdes.ready),
 
-            self._serdes.enable      .eq(1),
-            self._serdes.rx_align    .eq(self.train_alignment),
-            self._serdes.rx_polarity .eq(self.rx_polarity),
+            self._serdes.enable           .eq(1),
+            self._serdes.rx_align         .eq(self.train_alignment),
+            self._serdes.rx_polarity      .eq(self.rx_polarity),
+            self._serdes.train_equalizer  .eq(self.train_equalizer),
 
-            self._serdes.sink        .stream_eq(self.sink,           endian_swap=self._little_endian),
-            self.source              .stream_eq(self._serdes.source, endian_swap=self._little_endian)
+            self._serdes.sink             .stream_eq(self.sink,           endian_swap=self._little_endian),
+            self.source                   .stream_eq(self._serdes.source, endian_swap=self._little_endian)
         ]
 
 

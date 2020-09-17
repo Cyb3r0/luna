@@ -142,10 +142,10 @@ class ECPIX5DomainGenerator(Elaboratable):
                 p_CLKI_DIV = 20,
                 p_CLKOP_ENABLE = "ENABLED",
                 p_CLKOP_DIV = 16,
-                p_CLKOP_CPHASE = 9,
+                p_CLKOP_CPHASE = 15,
                 p_CLKOP_FPHASE = 0,
 
-                p_CLKOS_DIV = 10,
+                p_CLKOS_DIV = 12,
                 p_CLKOS_CPHASE = 0,
                 p_CLKOS_FPHASE = 0,
 

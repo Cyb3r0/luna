@@ -61,6 +61,7 @@ class LTSSMController(Elaboratable):
 
         # SerDes / link control signals.
         self.train_alignment       = Signal()
+        self.train_equalizer       = Signal()
         self.engage_terminations   = Signal()
         self.invert_rx_polarity    = Signal()
 
@@ -235,6 +236,7 @@ class LTSSMController(Elaboratable):
 
                 # Continuously send TSEQs; these are used to perform receiver equalization training.
                 m.d.comb += self.send_tseq_burst.eq(1)
+
 
                 # Once we've sent a full burst of 35536 TSEQs, we can begin our link training handshake.
                 with m.If(self.ts_burst_complete):
