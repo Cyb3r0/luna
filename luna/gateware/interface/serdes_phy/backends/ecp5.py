@@ -10,12 +10,15 @@
 #
 # Code based in part on ``litex`` and ``liteiclink``.
 # SPDX-License-Identifier: BSD-3-Clause
+""" SerDes backend for the ECP5. """
+
 
 from nmigen import *
 from nmigen.lib.cdc import FFSynchronizer, ResetSynchronizer
 
 from ....usb.stream import USBRawSuperSpeedStream
 from ..serdes       import TxDatapath, RxDatapath
+from ..lfps         import LFPSSquareWaveDetector
 
 
 class ECP5SerDesPLLConfiguration:
@@ -617,7 +620,8 @@ class ECP5SerDes(Elaboratable):
                  1: "0b000"}[1],                # DIV/1
             p_D_BITCLK_LOCAL_EN     = "0b1",    # Use clock from local PLL
 
-            # DCU ­— unknown
+
+            # Clock multiplier unit configuration
             p_D_CMUSETBIASI         = "0b00",   # begin undocumented (10BSER sample code used)
             p_D_CMUSETI4CPP         = "0d3",
             p_D_CMUSETI4CPZ         = "0d3",
@@ -629,6 +633,7 @@ class ECP5SerDes(Elaboratable):
             p_D_CMUSETP1GM          = "0b000",
             p_D_CMUSETP2AGM         = "0b000",
             p_D_CMUSETZGM           = "0b000",
+
             p_D_SETIRPOLY_AUX       = "0b01",
             p_D_SETICONST_AUX       = "0b01",
             p_D_SETIRPOLY_CH        = "0b01",
@@ -666,7 +671,7 @@ class ECP5SerDes(Elaboratable):
 
             p_CHX_REQ_EN            = "0b1",    # Enable equalizer
             p_CHX_REQ_LVL_SET       = "0b01",
-            p_CHX_RX_RATE_SEL       = "0d12",   # Equalizer  pole position
+            p_CHX_RX_RATE_SEL       = "0d09",   # Equalizer  pole position
             p_CHX_RTERM_RX          = {
                 "5k-ohms":        "0b00000",
                 "80-ohms":        "0b00001",
@@ -677,7 +682,7 @@ class ECP5SerDes(Elaboratable):
                 "46-ohms":        "0b11001",
                 "wizard-50-ohms": "0d22"}["wizard-50-ohms"],
             p_CHX_RXIN_CM           = "0b11",   # CMFB (wizard value used)
-            p_CHX_RXTERM_CM         = "0b11",   # RX Input (wizard value used)
+            p_CHX_RXTERM_CM         = "0b10",   # RX Input (wizard value used)
 
             # CHX RX ­— clocking
             i_CHX_RX_REFCLK         = self._pll.refclk,
@@ -777,7 +782,7 @@ class ECP5SerDes(Elaboratable):
                 "60-ohms":        "0b01011",
                 "50-ohms":        "0b10011",
                 "46-ohms":        "0b11001",
-                "wizard-50-ohms": "0d19"}["wizard-50-ohms"],
+                "wizard-50-ohms": "0d19"}["50-ohms"],
 
             p_CHX_TDRV_SLICE0_CUR   = "0b011",  # 400 uA
             p_CHX_TDRV_SLICE0_SEL   = "0b01",   # main data
@@ -866,7 +871,8 @@ class ECP5SerDes(Elaboratable):
 class LunaECP5SerDes(Elaboratable):
     """ Wrapper around the core ECP5 SerDes that optimizes the SerDes for USB3 use. """
 
-    def __init__(self, platform, sys_clk, sys_clk_freq, refclk_pads, refclk_freq, tx_pads, rx_pads, channel):
+    def __init__(self, platform, sys_clk, sys_clk_freq, refclk_pads, refclk_freq,
+            tx_pads, rx_pads, channel, dual=0, refclk_num=None, fast_clock_frequency=250e6):
         self._primary_clock           = sys_clk
         self._primary_clock_frequency = sys_clk_freq
         self._refclk                  = refclk_pads
@@ -874,30 +880,36 @@ class LunaECP5SerDes(Elaboratable):
         self._tx_pads                 = tx_pads
         self._rx_pads                 = rx_pads
         self._channel                 = channel
+        self._dual                    = dual
+        self._refclk_num              = refclk_num if refclk_num else dual
+        self._fast_clock_frequency    = 250e6
 
         #
         # I/O port
         #
-        self.sink            = USBRawSuperSpeedStream()
-        self.source          = USBRawSuperSpeedStream()
+        self.sink                    = USBRawSuperSpeedStream()
+        self.source                  = USBRawSuperSpeedStream()
 
-        self.enable          = Signal(reset=1) # i
-        self.ready           = Signal()        # o
+        self.enable                  = Signal(reset=1) # i
+        self.ready                   = Signal()        # o
 
-        self.train_equalizer = Signal()
+        self.train_equalizer         = Signal()
 
-        self.tx_polarity     = Signal()   # i
-        self.tx_idle         = Signal()   # i
-        self.tx_pattern      = Signal(20) # i
+        self.tx_polarity             = Signal()   # i
+        self.tx_idle                 = Signal()   # i
+        self.tx_pattern              = Signal(20) # i
 
-        self.rx_polarity     = Signal()   # i
-        self.rx_idle         = Signal()   # o
-        self.rx_align        = Signal()   # i
+        self.rx_polarity             = Signal()   # i
+        self.rx_idle                 = Signal()   # o
+        self.rx_align                = Signal()   # i
 
         # GPIO interface.
-        self.use_tx_as_gpio  = Signal()
-        self.tx_gpio         = Signal()
-        self.rx_gpio         = Signal()
+        self.use_tx_as_gpio          = Signal()
+        self.tx_gpio                 = Signal()
+        self.rx_gpio                 = Signal()
+
+        # LFPS detection interface.
+        self.lfps_signaling_detected = Signal()
 
         # Debug interface.
         self.raw_rx_data    = Signal(16)
@@ -922,7 +934,7 @@ class LunaECP5SerDes(Elaboratable):
                 p_REFCK_PWDNB = "0b1",
                 p_REFCK_RTERM = "0b1", # 100 Ohm
             )
-            refclk_in.attrs["LOC"] =  "EXTREF0"
+            refclk_in.attrs["LOC"] =  f"EXTREF{self._refclk_num}"
 
         # Otherwise, we'll accept the reference clock directly.
         else:
@@ -979,6 +991,17 @@ class LunaECP5SerDes(Elaboratable):
 
         # Pass through a synchronized version of our SerDes' rx-gpio.
         m.submodules += FFSynchronizer(serdes.rx_gpio, self.rx_gpio, o_domain="fast")
+
+
+        #
+        # LFPS Detection
+        #
+        m.submodules.lfps_detector = lfps_detector = LFPSSquareWaveDetector(self._fast_clock_frequency)
+        m.d.comb += [
+            lfps_detector.rx_gpio         .eq(self.rx_gpio),
+            self.lfps_signaling_detected  .eq(lfps_detector.present)
+        ]
+
 
         # debug signals
         m.d.comb += [

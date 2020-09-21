@@ -47,6 +47,10 @@ class SerDesPHY(Elaboratable):
         self.send_lfps_polling     = Signal()
         self.total_lfps_sent       = Signal()
 
+        # Debug output.
+        self.rx_gpio                 = Signal()
+        self.lfps_signaling_detected = Signal()
+
 
     def elaborate(self, platform):
         m = Module()
@@ -61,17 +65,21 @@ class SerDesPHY(Elaboratable):
             fast_clock_frequency=self._fast_clock_frequency
         )
         m.d.comb += [
-            lfps.tx_polling              .eq(self.send_lfps_polling),
-            self.lfps_polling_detected   .eq(lfps.rx_polling),
-            self.total_lfps_sent         .eq(lfps.tx_count),
+            lfps.tx_polling               .eq(self.send_lfps_polling),
+            self.lfps_polling_detected    .eq(lfps.rx_polling),
+            self.total_lfps_sent          .eq(lfps.tx_count),
 
             # Pass through our Tx GPIO signals directly to our SerDes.
-            self._serdes.use_tx_as_gpio  .eq(lfps.drive_tx_gpio),
-            self._serdes.tx_gpio         .eq(lfps.tx_gpio),
-            self._serdes.tx_idle         .eq(lfps.tx_idle),
+            self._serdes.use_tx_as_gpio   .eq(lfps.drive_tx_gpio),
+            self._serdes.tx_gpio          .eq(lfps.tx_gpio),
+            self._serdes.tx_idle          .eq(lfps.tx_idle),
 
             # Capture the Rx GPIO signal from our SerDes.
-            lfps.rx_gpio                 .eq(self._serdes.rx_gpio)
+            lfps.lfps_signaling_detected  .eq(self._serdes.lfps_signaling_detected),
+
+            # Debug
+            self.lfps_signaling_detected  .eq(lfps.lfps_signaling_detected),
+            self.rx_gpio                  .eq(self._serdes.rx_gpio)
         ]
 
         #

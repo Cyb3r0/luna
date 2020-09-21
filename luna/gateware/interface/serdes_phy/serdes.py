@@ -55,8 +55,8 @@ class ReceiverGearbox(Elaboratable):
         hardware will be generated.
     """
 
-    def __init__(self, words_in=2, input_domain="rx", output_domain=None):
-        self._flip_bytes      = True
+    def __init__(self, words_in=2, input_domain="rx", output_domain=None, flip_bytes=True):
+        self._flip_bytes      = flip_bytes
         self._words_in        = words_in
         self._data_bits_in    = words_in * 8
         self._ctrl_bits_in    = words_in
@@ -377,10 +377,13 @@ class RxDatapath(Elaboratable):
     - Clock compensation (SKP removing).
     - Words alignment.
     """
-    def __init__(self, clock_domain="rx", buffer_clock_domain="fast", output_clock_domain="ss"):
-        self._clock_domain        = clock_domain
-        self._buffer_clock_domain = buffer_clock_domain
-        self._output_clock_domain = output_clock_domain
+    def __init__(self, clock_domain="rx", buffer_clock_domain="fast",
+            output_clock_domain="ss", serdes_is_little_endian=True):
+
+        self._clock_domain            = clock_domain
+        self._buffer_clock_domain     = buffer_clock_domain
+        self._output_clock_domain     = output_clock_domain
+        self._serdes_is_little_endian = serdes_is_little_endian
 
         #
         # I/O port
@@ -401,7 +404,8 @@ class RxDatapath(Elaboratable):
         #
         m.submodules.gearing = gearing = ReceiverGearbox(
             input_domain  = self._clock_domain,
-            output_domain = "ss"
+            output_domain = "ss",
+            flip_bytes    = self._serdes_is_little_endian
         )
         m.d.comb += gearing.sink.stream_eq(self.sink)
 

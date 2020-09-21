@@ -37,7 +37,9 @@ class USB3LinkLayer(Elaboratable):
         # Status signals.
         self.trained               = Signal()
 
-        # Debugging signals
+        # Debug / status signals.  = Signal()
+        self.in_training           = Signal()
+        self.sending_ts1s          = Signal()
         self.sending_ts2s          = Signal()
 
 
@@ -98,7 +100,9 @@ class USB3LinkLayer(Elaboratable):
             ltssm.logical_idle_detected       .eq(1 | idle.idle_detected),
 
             # Status signaling.
-            self.trained                      .eq(ltssm.link_ready)
+            self.trained                      .eq(ltssm.link_ready),
+
+            self.in_training                  .eq(ltssm.send_tseq_burst | ltssm.send_ts1_burst | ltssm.send_ts2_burst)
         ]
 
         #
@@ -134,6 +138,7 @@ class USB3LinkLayer(Elaboratable):
         # Debugging
         #
         m.d.comb += [
+            self.sending_ts1s.eq(ltssm.send_ts1_burst),
             self.sending_ts2s.eq(ltssm.send_ts2_burst)
         ]
 

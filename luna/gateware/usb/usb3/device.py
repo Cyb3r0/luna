@@ -38,8 +38,10 @@ class USBSuperSpeedDevice(Elaboratable):
         self.link_trained = Signal()
 
         # Temporary, debug signals.
-        self.data_tap     = USBRawSuperSpeedStream()
-        self.sending_ts2s = Signal()
+        self.data_tap         = USBRawSuperSpeedStream()
+        self.sending_ts1s     = Signal()
+        self.sending_ts2s     = Signal()
+        self.link_in_training = Signal()
 
 
     def elaborate(self, platform):
@@ -58,8 +60,10 @@ class USBSuperSpeedDevice(Elaboratable):
         #
         m.submodules.link = link = USB3LinkLayer(physical_layer=physical)
         m.d.comb += [
-            self.link_trained  .eq(link.trained),
-            self.sending_ts2s  .eq(link.sending_ts2s)
+            self.link_trained     .eq(link.trained),
+            self.link_in_training .eq(link.in_training),
+            self.sending_ts1s     .eq(link.sending_ts1s),
+            self.sending_ts2s     .eq(link.sending_ts2s)
         ]
 
 
